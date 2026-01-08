@@ -122,12 +122,13 @@ async def extract_customer_response(raw_response: str) -> str:
 - احذف أي ملاحظات داخلية أو تعليقات
 - احذف [HANDOFF:xxx] tags
 - أبقِ الرد كاملاً بدون اختصار
-- لا تضف أي شيء من عندك
+- تأكد أن الرد ودود ولطيف باللهجة السعودية
+- لا تضف أي شيء جديد من عندك
 
 النص الأصلي:
 {raw_response}
 
-الرد النظيف للعميل:"""
+الرد النظيف والودود للعميل:"""
 
         result = await llm.ainvoke(extraction_prompt)
         cleaned = result.content.strip()
