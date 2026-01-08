@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sawt-postgres
+    environment:
+      POSTGRES_USER: sawt
+      POSTGRES_PASSWORD: sawt_password
+      POSTGRES_DB: sawt
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sawt -d sawt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: sawt-postgres-test
+    environment:
+      POSTGRES_USER: sawt
+      POSTGRES_PASSWORD: sawt_password
+      POSTGRES_DB: sawt_test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sawt -d sawt_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
