@@ -106,47 +106,40 @@ async def extract_customer_response(raw_response: str) -> str:
     """Use LLM to extract only the clean Arabic customer-facing response."""
     response_logger.info(f"Raw agent response: {raw_response}")
 
-    # If response is already clean Arabic (no English), return as-is after basic cleanup
-    # Check if there's any English text or brackets
-    has_english = bool(re.search(r'[a-zA-Z]{3,}', raw_response))
-    has_brackets = bool(re.search(r'[\[\(].*[\]\)]', raw_response))
-
-    if not has_english and not has_brackets:
-        # Remove [HANDOFF:xxx] tags only
-        cleaned = re.sub(r'\[HANDOFF:\w+\]', '', raw_response).strip()
-        response_logger.info(f"Response already clean, returning: {cleaned}")
-        return cleaned
-
-    # Use LLM to extract clean response
     try:
         llm = ChatOpenAI(
             model=settings.openrouter_model,
             openai_api_key=settings.openrouter_api_key,
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0,
-            max_tokens=500,
+            max_tokens=1000,
         )
 
-        extraction_prompt = f"""استخرج فقط الرد العربي للعميل من النص التالي. احذف أي نص إنجليزي أو ملاحظات داخلية أو تعليقات.
+        extraction_prompt = f"""أنت مساعد لتنظيف الردود. استخرج فقط الرد العربي للعميل من النص التالي.
 
-النص:
+قواعد:
+- احذف أي نص إنجليزي
+- احذف أي ملاحظات داخلية أو تعليقات
+- احذف [HANDOFF:xxx] tags
+- أبقِ الرد كاملاً بدون اختصار
+- لا تضف أي شيء من عندك
+
+النص الأصلي:
 {raw_response}
 
-الرد للعميل فقط (بالعربي):"""
+الرد النظيف للعميل:"""
 
         result = await llm.ainvoke(extraction_prompt)
         cleaned = result.content.strip()
-
-        # Remove any [HANDOFF:xxx] tags that might remain
-        cleaned = re.sub(r'\[HANDOFF:\w+\]', '', cleaned).strip()
 
         response_logger.info(f"LLM cleaned response: {cleaned}")
         return cleaned
 
     except Exception as e:
         response_logger.error(f"Error in LLM extraction: {e}")
-        # Fallback to regex cleaning
-        return clean_response(raw_response)
+        # Fallback: just remove HANDOFF tags
+        cleaned = re.sub(r'\[HANDOFF:\w+\]', '', raw_response).strip()
+        return cleaned
 
 
 # Page configuration
