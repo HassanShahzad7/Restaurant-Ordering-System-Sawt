@@ -42,6 +42,17 @@ def clean_response(response: str) -> str:
         r'Keep concise.*',  # English internal reasoning
         r'Use Saudi dialect.*',  # English internal reasoning
         r'So final answer:.*',  # English internal reasoning
+        r'أكيد follow developer.*',  # Mixed Arabic/English reasoning
+        r'follow developer rules.*',  # Developer rules reasoning
+        r'After adding, must ask.*',  # Internal instruction
+        r'User next\?.*',  # Internal reasoning
+        r'Let\'s produce final.*',  # Internal reasoning
+        r'No, user hasn\'t.*',  # Internal reasoning
+        r'So we already asked.*',  # Internal reasoning
+        r'No further action.*',  # Internal reasoning
+        r'But system expects.*',  # Internal reasoning
+        r'Done\.\s*$',  # Trailing "Done."
+        r'We wait\..*',  # Internal reasoning
     ]
 
     cleaned = response
@@ -55,6 +66,15 @@ def clean_response(response: str) -> str:
         'analysis:',
         'The last assistant',
         'Now user hasn\'t',
+        'أكيد follow',
+        'follow developer',
+        'After adding,',
+        'User next?',
+        'Let\'s produce',
+        'We wait.',
+        'Done.',
+        'No further action',
+        'But system expects',
     ]
 
     for marker in reasoning_markers:
