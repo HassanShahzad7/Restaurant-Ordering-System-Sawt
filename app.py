@@ -102,45 +102,15 @@ def clean_response(response: str) -> str:
     return cleaned
 
 
-async def extract_customer_response(raw_response: str) -> str:
-    """Use LLM to extract only the clean Arabic customer-facing response."""
+def simple_clean_response(raw_response: str) -> str:
+    """Simple cleaning - just remove HANDOFF tags, keep everything else."""
     response_logger.info(f"Raw agent response: {raw_response}")
 
-    try:
-        llm = ChatOpenAI(
-            model=settings.openrouter_model,
-            openai_api_key=settings.openrouter_api_key,
-            openai_api_base="https://openrouter.ai/api/v1",
-            temperature=0,
-            max_tokens=1000,
-        )
+    # Just remove [HANDOFF:xxx] tags
+    cleaned = re.sub(r'\[HANDOFF:\w+\]', '', raw_response).strip()
 
-        extraction_prompt = f"""أنت مساعد لتنظيف الردود. استخرج فقط الرد العربي للعميل من النص التالي.
-
-قواعد:
-- احذف أي نص إنجليزي
-- احذف أي ملاحظات داخلية أو تعليقات
-- احذف [HANDOFF:xxx] tags
-- أبقِ الرد كاملاً بدون اختصار
-- تأكد أن الرد ودود ولطيف باللهجة السعودية
-- لا تضف أي شيء جديد من عندك
-
-النص الأصلي:
-{raw_response}
-
-الرد النظيف والودود للعميل:"""
-
-        result = await llm.ainvoke(extraction_prompt)
-        cleaned = result.content.strip()
-
-        response_logger.info(f"LLM cleaned response: {cleaned}")
-        return cleaned
-
-    except Exception as e:
-        response_logger.error(f"Error in LLM extraction: {e}")
-        # Fallback: just remove HANDOFF tags
-        cleaned = re.sub(r'\[HANDOFF:\w+\]', '', raw_response).strip()
-        return cleaned
+    response_logger.info(f"Cleaned response: {cleaned}")
+    return cleaned
 
 
 # Page configuration
@@ -327,8 +297,8 @@ async def process_message(user_message: str) -> str:
             content_str = str(msg.content)
             if content_str.startswith("{") or content_str.startswith("["):
                 continue
-            # Found a valid response - use LLM to extract clean customer response
-            cleaned_content = await extract_customer_response(content_str)
+            # Found a valid response - simple clean (just remove HANDOFF tags)
+            cleaned_content = simple_clean_response(content_str)
             response_preview = cleaned_content[:200] + "..." if len(cleaned_content) > 200 else cleaned_content
             logger.info(f"Returning response ({len(cleaned_content)} chars): {response_preview}")
             return cleaned_content
