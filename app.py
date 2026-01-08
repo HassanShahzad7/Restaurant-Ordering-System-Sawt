@@ -2,9 +2,11 @@
 
 import asyncio
 import uuid
+import logging
 
 import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_openai import ChatOpenAI
 
 import re
 
@@ -12,6 +14,9 @@ from sawt.db.connection import init_db, close_db, DatabasePool
 from sawt.graph.state import create_initial_state
 from sawt.graph.workflow import graph
 from sawt.tools.menu_tools import load_menu_cache
+from sawt.config import settings
+
+response_logger = logging.getLogger("sawt.response_cleaner")
 
 
 def clean_response(response: str) -> str:
@@ -53,6 +58,10 @@ def clean_response(response: str) -> str:
         r'But system expects.*',  # Internal reasoning
         r'Done\.\s*$',  # Trailing "Done."
         r'We wait\..*',  # Internal reasoning
+        r'\(Conversation context.*',  # Context markers
+        r'\(End of.*',  # End markers
+        r'\[Context.*',  # Context brackets
+        r'\[End.*',  # End brackets
     ]
 
     cleaned = response
@@ -75,6 +84,10 @@ def clean_response(response: str) -> str:
         'Done.',
         'No further action',
         'But system expects',
+        '(Conversation context',
+        '(End of',
+        '[Context',
+        '[End',
     ]
 
     for marker in reasoning_markers:
@@ -87,6 +100,53 @@ def clean_response(response: str) -> str:
     cleaned = cleaned.strip()
 
     return cleaned
+
+
+async def extract_customer_response(raw_response: str) -> str:
+    """Use LLM to extract only the clean Arabic customer-facing response."""
+    response_logger.info(f"Raw agent response: {raw_response}")
+
+    # If response is already clean Arabic (no English), return as-is after basic cleanup
+    # Check if there's any English text or brackets
+    has_english = bool(re.search(r'[a-zA-Z]{3,}', raw_response))
+    has_brackets = bool(re.search(r'[\[\(].*[\]\)]', raw_response))
+
+    if not has_english and not has_brackets:
+        # Remove [HANDOFF:xxx] tags only
+        cleaned = re.sub(r'\[HANDOFF:\w+\]', '', raw_response).strip()
+        response_logger.info(f"Response already clean, returning: {cleaned}")
+        return cleaned
+
+    # Use LLM to extract clean response
+    try:
+        llm = ChatOpenAI(
+            model=settings.openrouter_model,
+            openai_api_key=settings.openrouter_api_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0,
+            max_tokens=500,
+        )
+
+        extraction_prompt = f"""استخرج فقط الرد العربي للعميل من النص التالي. احذف أي نص إنجليزي أو ملاحظات داخلية أو تعليقات.
+
+النص:
+{raw_response}
+
+الرد للعميل فقط (بالعربي):"""
+
+        result = await llm.ainvoke(extraction_prompt)
+        cleaned = result.content.strip()
+
+        # Remove any [HANDOFF:xxx] tags that might remain
+        cleaned = re.sub(r'\[HANDOFF:\w+\]', '', cleaned).strip()
+
+        response_logger.info(f"LLM cleaned response: {cleaned}")
+        return cleaned
+
+    except Exception as e:
+        response_logger.error(f"Error in LLM extraction: {e}")
+        # Fallback to regex cleaning
+        return clean_response(raw_response)
 
 
 # Page configuration
@@ -273,8 +333,8 @@ async def process_message(user_message: str) -> str:
             content_str = str(msg.content)
             if content_str.startswith("{") or content_str.startswith("["):
                 continue
-            # Found a valid response - clean it before returning
-            cleaned_content = clean_response(content_str)
+            # Found a valid response - use LLM to extract clean customer response
+            cleaned_content = await extract_customer_response(content_str)
             response_preview = cleaned_content[:200] + "..." if len(cleaned_content) > 200 else cleaned_content
             logger.info(f"Returning response ({len(cleaned_content)} chars): {response_preview}")
             return cleaned_content
